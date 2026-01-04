@@ -73,34 +73,82 @@ class EnhancedGraphitiService:
         """初始化graphiti_core"""
         try:
             from graphiti_core import Graphiti
-            from graphiti_core.llm_client import LLMClient
+            from graphiti_core.llm_client import LLMConfig
+            from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
+            from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+            from openai import AsyncOpenAI
             
             # 从环境变量获取Neo4j连接信息
             neo4j_uri = os.environ.get('NEO4J_URI', 'bolt://localhost:7687')
             neo4j_user = os.environ.get('NEO4J_USER', 'neo4j')
             neo4j_password = os.environ.get('NEO4J_PASSWORD', 'password')
             
-            # 获取OpenAI API配置
-            openai_api_key = os.environ.get('OPENAI_API_KEY', '')
-            openai_base_url = os.environ.get('OPENAI_BASE_URL', None)
-            openai_model = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
-            
             logger.info(f"🔗 连接Neo4j: {neo4j_uri}")
-            if openai_base_url:
-                logger.info(f"🤖 使用自定义API端点: {openai_base_url}")
-                logger.info(f"📦 使用LLM模型: {openai_model}")
             
-            # 初始化graphiti_core，传递OpenAI API密钥
-            if openai_api_key:
-                # 先设置环境变量（graphiti_core会读取）
-                os.environ['OPENAI_API_KEY'] = openai_api_key
-                if openai_base_url:
-                    os.environ['OPENAI_BASE_URL'] = openai_base_url
-                os.environ['OPENAI_MODEL'] = openai_model
+            # ========== LLM配置（使用DeepSeek官方API）==========
+            llm_api_key = os.environ.get('DEEPSEEK_API_KEY', '')
+            llm_base_url = os.environ.get('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
+            llm_model = os.environ.get('OPENAI_MODEL', 'deepseek-chat')
             
-            # 创建Graphiti实例，配置LLM
-            self._graphiti_core = Graphiti(neo4j_uri, neo4j_user, neo4j_password)
+            if llm_api_key:
+                logger.info(f"🤖 LLM提供商: DeepSeek官方API")
+                logger.info(f"🔗 LLM端点: {llm_base_url}")
+                logger.info(f"📦 LLM模型: {llm_model}")
+                
+                # 创建LLM客户端
+                llm_openai_client = AsyncOpenAI(
+                    api_key=llm_api_key,
+                    base_url=llm_base_url
+                )
+                llm_client = OpenAIGenericClient(
+                    client=llm_openai_client,
+                    config=LLMConfig(model=llm_model)
+                )
+            else:
+                logger.warning("⚠️  未配置DeepSeek API密钥，使用默认LLM配置")
+                llm_client = None
+            
+            # ========== Embedding配置（使用SiliconFlow）==========
+            embedding_api_key = os.environ.get('OPENAI_API_KEY', '')
+            embedding_base_url = os.environ.get('OPENAI_BASE_URL', None)
+            embedding_model = os.environ.get('OPENAI_EMBEDDING_MODEL', 'Qwen/Qwen3-Embedding-4B')
+            
+            if embedding_api_key:
+                logger.info(f"🔢 Embedding提供商: SiliconFlow")
+                if embedding_base_url:
+                    logger.info(f"🔗 Embedding端点: {embedding_base_url}")
+                logger.info(f"📦 Embedding模型: {embedding_model}")
+                
+                # 创建Embedding客户端
+                embedder_client_params = {
+                    'api_key': embedding_api_key,
+                    'model': embedding_model
+                }
+                if embedding_base_url:
+                    embedder_client_params['base_url'] = embedding_base_url
+                
+                embedder_client = OpenAIEmbedder(
+                    config=OpenAIEmbedderConfig(**embedder_client_params)
+                )
+            else:
+                logger.warning("⚠️  未配置OpenAI API密钥，使用默认Embedding配置")
+                embedder_client = None
+            
+            # 创建Graphiti实例
+            graphiti_params = {
+                'uri': neo4j_uri,
+                'user': neo4j_user,
+                'password': neo4j_password
+            }
+            
+            if llm_client:
+                graphiti_params['llm_client'] = llm_client
+            if embedder_client:
+                graphiti_params['embedder'] = embedder_client
+            
+            self._graphiti_core = Graphiti(**graphiti_params)
             self._graphiti_core_enabled = True
+            logger.info("✅ graphiti_core初始化成功（分离配置：DeepSeek LLM + SiliconFlow Embedding）")
             
         except ImportError as e:
             raise ImportError(f"❌ 无法导入graphiti_core: {str(e)}。请运行: pip install graphiti-core")
