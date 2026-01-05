@@ -1,239 +1,525 @@
-# AIRP记忆系统 - Graphiti + DeepSeek V3.2 集成项目
+# AIRP记忆增强系统 - Graphiti + DeepSeek + SillyTavern集成
 
-基于Graphiti时序知识图谱的记忆增强系统，为SillyTavern提供强大的记忆管理和角色理解能力。
+基于Graphiti知识图谱的记忆增强系统，为SillyTavern提供OpenAI兼容API，实现持久化记忆管理和智能检索。
 
-## 项目特点
+## 📋 项目概述
 
-- ✅ **完整的Docker部署方案** - 一键启动所有服务
-- ✅ **DeepSeek V3.2兼容** - 支持Strict JSON Schema模式
-- ✅ **OpenAI兼容API** - 无缝集成SillyTavern
-- ✅ **智能格式解析** - 自动识别和处理SillyTavern特殊格式
-- ✅ **记忆增强** - 基于知识图谱的动态记忆管理
-- ✅ **生产就绪** - 包含完整的监控、日志和故障排除方案
+本项目实现了一个完整的记忆增强API系统，主要特性包括：
 
-## 快速开始
+- **知识图谱存储**：使用Neo4j + Graphiti构建时序感知知识图谱
+- **智能记忆检索**：混合检索（向量+图）+ Reranker重排序
+- **SillyTavern集成**：解析SillyTavern特殊格式文本
+- **OpenAI兼容API**：完全兼容OpenAI Chat Completions API
+- **DeepSeek LLM**：使用DeepSeek V3进行推理
+- **硅基流动Embedding**：使用BAAI系列模型进行向量嵌入
 
-### 1. 前置要求
+## 🏗️ 系统架构
 
-- Docker 20.10+
-- Docker Compose v2.0+
-- 至少8GB可用内存
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SillyTavern                          │
+└────────────────────┬────────────────────────────────────┘
+                     │ OpenAI兼容API
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│              FastAPI服务 (端口8000)                       │
+│  ┌─────────────────────────────────────────────────────┐  │
+│  │  1. SillyTavern格式解析器                        │  │
+│  │     - 提取指令性内容                               │  │
+│  │     - 提取叙事性内容                               │  │
+│  │     - 解析对话历史                                 │  │
+│  └─────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────┐  │
+│  │  2. Graphiti记忆服务                              │  │
+│  │     - Episode添加                                  │  │
+│  │     - 记忆检索（混合检索）                         │  │
+│  │     - Reranker重排序                              │  │
+│  └─────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────┐  │
+│  │  3. 上下文优化器                                  │  │
+│  │     - 保留指令性内容                               │  │
+│  │     - 替换叙事性内容                               │  │
+│  │     - Token优化                                    │  │
+│  └─────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────┐  │
+│  │  4. LLM调用接口                                  │  │
+│  │     - DeepSeek V3调用                            │  │
+│  │     - 异步响应后处理                             │  │
+│  └─────────────────────────────────────────────────────┘  │
+└──────────┬───────────────────────────────────┬───────────┘
+           │                                   │
+           ▼                                   ▼
+┌─────────────────────┐           ┌──────────────────────────┐
+│   Neo4j知识图谱    │           │   DeepSeek V3 LLM        │
+│  + Graphiti Core   │           │  (beta端点，Strict模式)   │
+│  - 实体/关系存储   │           └──────────────────────────┘
+│  - 向量索引        │                    │
+│  - 图遍历检索      │                    ▼
+└─────────────────────┘           ┌──────────────────────────┐
+                                │   硅基流动API            │
+                                │  - Embedding (BAAI/bge-m3)│
+                                │  - Reranker (bge-reranker)│
+                                └──────────────────────────┘
+```
+
+## 🚀 快速开始
+
+### 前置要求
+
+- Docker和Docker Compose v2
+- Python 3.11+（本地开发）
 - DeepSeek API密钥
+- 硅基流动API密钥
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/2211427551/Exp_Graphiti_MemR3_AIRP_Intergration.git
+cd Exp_Graphiti_MemR3_AIRP_Intergration
+```
 
 ### 2. 配置环境变量
 
-```bash
-# 编辑.env文件
-nano .env
+复制`.env.example`到`.env`并填入实际值：
 
-# 修改以下关键配置：
-# - DEEPSEEK_API_KEY: 你的DeepSeek API密钥
-# - SILICONFLOW_API_KEY: 你的硅基流动API密钥（从 https://siliconflow.cn 获取）
-# - NEO4J_PASSWORD: 设置强密码
-# - REDIS_PASSWORD: 设置强密码
-# - APP_SECRET_KEY: 生成随机密钥（python -c "import secrets; print(secrets.token_urlsafe(32))"）
+```bash
+cd api-service
+cp .env.example .env
 ```
 
-**API密钥获取**:
-- DeepSeek API: https://platform.deepseek.com
-- 硅基流动API: https://siliconflow.cn
+编辑`.env`文件，填入以下内容：
+
+```env
+# Neo4j配置
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_secure_password_here
+
+# DeepSeek LLM配置
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+DEEPSEEK_BASE_URL=https://api.deepseek.com/beta
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_SMALL_MODEL=deepseek-chat
+
+# 硅基流动配置
+SILICONFLOW_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+SILICONFLOW_EMBEDDING_MODEL=BAAI/bge-m3
+SILICONFLOW_EMBEDDING_DIM=1024
+SILICONFLOW_RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+
+# API服务配置
+API_HOST=0.0.0.0
+API_PORT=8000
+API_WORKERS=3
+API_SEMAPHORE_LIMIT=5
+
+# 应用配置
+APP_ENV=production
+APP_SECRET_KEY=your_secret_key_change_this_in_production
+```
 
 ### 3. 启动服务
 
-```bash
-# 创建必要的目录
-mkdir -p neo4j/{data,logs,import,plugins}
-mkdir -p redis/data
-mkdir -p logs/api
-mkdir -p api-service
+使用Docker Compose启动所有服务：
 
-# 启动所有服务
+```bash
+# 回到项目根目录
+cd ..
+
+# 启动Neo4j和API服务
 docker-compose up -d
 
-# 查看服务状态
-docker-compose ps
+# 查看日志
+docker-compose logs -f api
 ```
 
-### 4. 验证部署
+服务启动后：
+- **Neo4j**: http://localhost:7474
+- **API**: http://localhost:8000
+- **API文档**: http://localhost:8000/docs
+
+### 4. 验证安装
+
+检查服务健康状态：
 
 ```bash
-# 检查API健康状态
 curl http://localhost:8000/health
-
-# 访问Neo4j Browser（可选）
-# http://localhost:7474
-# 用户名：neo4j
-# 密码：你在.env中设置的密码
 ```
 
-### 5. 配置SillyTavern
+预期响应：
 
-1. 打开SillyTavern设置
-2. 连接设置：
-   - 后端提供商：OpenAI
-   - API URL：`http://your-server-ip:8000/v1/chat/completions`
-   - API Key：任意值（系统不验证）
-   - 模型：`deepseek-chat`
-
-## 文档说明
-
-### 开发部署指南.md
-完整的开发部署文档，包含：
-- 详细的系统架构设计
-- Docker配置说明
-- Graphiti配置与兼容层设计
-- API服务实现逻辑
-- DeepSeek集成方案（两种方案）
-- SillyTavern连接配置
-- 测试验证流程
-- 故障排除指南
-
-### docker-compose.yaml
-Docker Compose配置文件，定义了：
-- Neo4j 5.26图数据库
-- Redis缓存服务
-- FastAPI服务容器
-
-### .env
-环境变量配置文件，包含：
-- Neo4j连接配置
-- Redis配置
-- DeepSeek API配置
-- Graphiti配置
-- API服务配置
-
-## 技术栈
-
-- **数据库**: Neo4j 5.26
-- **记忆框架**: Graphiti-core
-- **LLM推理**: DeepSeek V3.2
-- **向量化和重排序**: 硅基流动 (SiliconFlow)
-- **API框架**: FastAPI
-- **缓存**: Redis 7
-- **容器化**: Docker + Docker Compose
-
-## 关键特性
-
-### DeepSeek + 硅基流动集成方案
-
-**LLM推理**: 使用DeepSeek官方API
-- 模型：DeepSeek V3.2 (deepseek-chat)
-- 支持Beta端点 + Strict模式（推荐）
-- 备选方案：标准端点 + 兼容层
-
-**Embedding**: 使用硅基流动API
-- 推荐模型：BAAI/bge-m3
-- 多语言支持
-- 开源BGE系列模型
-
-**Reranker**: 使用硅基流动API
-- 推荐模型：BAAI/bge-reranker-v2-m3
-- 搜索结果重排序
-- 提升检索准确性
-
-### DeepSeek兼容方案
-
-**方案A（推荐）**: 使用Beta端点 + Strict模式
-- 端点：`https://api.deepseek.com/beta`
-- 完全支持JSON Schema
-- 服务器端验证
-- 最佳质量和稳定性
-
-**方案B（备选）**: 标准端点 + 兼容层
-- 端点：`https://api.deepseek.com`
-- 自定义兼容层
-- 提示词增强 + 后处理验证
-- 降级保障
-
-### SillyTavern格式解析
-
-自动识别和处理：
-- `<核心指导>` - 指令性内容（不入图谱）
-- `<相关资料>` - 世界书信息
-- `<互动历史>` - 对话历史
-- 特殊标签格式
-- User/Assistant交替模式
-
-### 记忆管理
-
-- 自动实体关系提取
-- 去重和合并
-- 时序跟踪
-- 混合检索（向量+图）
-- 上下文优化
-
-## 项目结构
-
-```
-.
-├── docker-compose.yaml          # Docker编排配置
-├── .env                        # 环境变量
-├── README.md                   # 本文件
-├── 开发部署指南.md            # 完整部署文档
-├── api-service/               # API服务代码（需自行实现）
-│   ├── main.py
-│   ├── config/
-│   ├── services/
-│   ├── models/
-│   └── utils/
-├── neo4j/                     # Neo4j数据目录
-├── redis/                     # Redis数据目录
-└── logs/                      # 日志目录
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-01-05T12:00:00",
+  "version": "1.0.0"
+}
 ```
 
-## 下一步
+## 🔧 SillyTavern配置
 
-1. 阅读`开发部署指南.md`了解详细实现方案
-2. 在`api-service/`目录实现API服务代码
-3. 根据指南配置Graphiti和兼容层
-4. 测试与SillyTavern的集成
+### 1. 添加自定义端点
 
-## 故障排除
+在SillyTavern中：
 
-### 常见问题
+1. 打开设置 → API连接
+2. 点击"添加新端点"
+3. 配置如下：
 
-1. **Neo4j启动失败**
-   - 检查内存配置
-   - 降低`NEO4J_dbms_memory_*`值
-   - 参考`开发部署指南.md`第9节
+```
+名称: AIRP Memory System
+URL: http://localhost:8000/v1
+API密钥: (留空)
+类型: OpenAI兼容
+```
 
-2. **API无法连接**
-   - 检查端口是否开放
-   - 检查防火墙设置
-   - 查看容器日志：`docker-compose logs api-service`
+### 2. 选择模型
 
-3. **DeepSeek API错误**
-   - 验证API密钥
-   - 检查端点URL
-   - 降低并发限制：`GRAPHITI_SEMAPHORE_LIMIT`
+```
+模型: deepseek-chat
+```
 
-4. **记忆功能不生效**
-   - 启用调试日志
-   - 检查Graphiti配置
-   - 验证Neo4j数据
+### 3. 使用SillyTavern格式
 
-详细的故障排除步骤请参考`开发部署指南.md`第9节。
+在SillyTavern的提示词中使用标准格式：
 
-## 安全建议
+```
+<核心指导>
+你是一个专业的AI助手，擅长记忆和上下文理解。
+</核心指导>
 
-生产环境部署前请务必：
+<相关资料>
+地点(图书馆): 一个安静的地方，有很多书籍
+角色(张三): 25岁，喜欢阅读
+</相关资料>
 
-1. ✅ 修改所有默认密码
-2. ✅ 使用强密码（至少16位）
-3. ✅ 启用HTTPS（配置反向代理）
-4. ✅ 限制Neo4j Browser访问
-5. ✅ 实施API速率限制
-6. ✅ 定期备份数据库
-7. ✅ 监控系统资源使用
+用户：告诉我关于张三的信息
+```
 
-## 许可证
+系统会自动：
+- 解析标签内容
+- 提取实体和关系
+- 存储到知识图谱
+- 检索相关记忆
+- 优化上下文
+- 生成增强响应
 
-本项目基于开源项目构建，遵循相应许可证。
+## 📁 项目结构
 
-## 联系方式
+```
+Exp_Graphiti_MemR3_AIRP_Intergration/
+├── api-service/                 # API服务主目录
+│   ├── main.py                # FastAPI应用入口
+│   ├── Dockerfile             # API服务Docker镜像
+│   ├── requirements.txt        # Python依赖
+│   ├── .env.example          # 环境变量模板
+│   ├── config/               # 配置模块
+│   │   ├── __init__.py
+│   │   ├── settings.py       # 应用配置
+│   │   └── graphiti_config.py # Graphiti客户端配置
+│   ├── models/               # 数据模型
+│   │   ├── __init__.py
+│   │   ├── requests.py      # 请求模型
+│   │   └── responses.py     # 响应模型
+│   ├── services/            # 服务层
+│   │   ├── __init__.py
+│   │   ├── parser_service.py     # SillyTavern解析器
+│   │   ├── graphiti_service.py   # Graphiti服务封装
+│   │   └── llm_service.py       # LLM服务封装
+│   └── utils/               # 工具模块
+│       ├── __init__.py
+│       ├── logger.py       # 日志配置
+│       └── helpers.py     # 辅助函数
+├── docker-compose.yaml     # Docker Compose配置
+├── .env                   # 环境变量（不提交到git）
+├── .gitignore            # Git忽略文件
+└── README.md             # 项目文档
+```
 
-如有问题，请参考`开发部署指南.md`或提交Issue。
+## 🔑 API端点
 
----
+### 健康检查
 
-**重要提示**: 本项目目前处于初级开发阶段，API服务代码需要根据`开发部署指南.md`中的设计自行实现。配置文件已经准备就绪，可以直接用于Docker部署。
+```http
+GET /health
+```
+
+**响应**:
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-01-05T12:00:00",
+  "version": "1.0.0"
+}
+```
+
+### Chat Completions（OpenAI兼容）
+
+```http
+POST /v1/chat/completions
+Content-Type: application/json
+X-Session-ID: sess-abc123
+
+{
+  "model": "deepseek-chat",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是AI助手"
+    },
+    {
+      "role": "user",
+      "content": "<核心指导>记住这些信息</核心指导>用户：你好"
+    }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 4096
+}
+```
+
+**响应**:
+
+```json
+{
+  "id": "chatcmpl-xxx",
+  "object": "chat.completion",
+  "created": 1704436800,
+  "model": "deepseek-chat",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "你好！有什么可以帮助你的吗？"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 100,
+    "completion_tokens": 50,
+    "total_tokens": 150
+  },
+  "extra": {
+    "memories_used": 5
+  }
+}
+```
+
+## 🧠 记忆系统工作原理
+
+### 1. 内容解析
+
+系统解析SillyTavern格式文本，识别：
+
+- **指令性内容**（不入图谱）：
+  - 核心指导
+  - 基础风格
+  - 补充资料
+
+- **叙事性内容**（入图谱）：
+  - 世界书信息
+  - 对话历史
+  - 一般内容
+
+### 2. 知识图谱存储
+
+```
+用户输入 → 解析 → 实体提取 → 关系构建 → 存储到Neo4j
+```
+
+- 使用Graphiti的`add_episode()`方法
+- 自动提取实体和关系
+- 构建向量索引
+- 支持时序查询
+
+### 3. 智能检索
+
+```
+查询问题 → Graphiti.search() → 混合检索 → Reranker重排序 → 返回相关记忆
+```
+
+- 向量检索：基于语义相似度
+- 图检索：基于实体关系
+- Reranker：精细化重排序
+
+### 4. 上下文优化
+
+```
+原始上下文 + 相关记忆 → 优化 → 增强提示词 → LLM调用
+```
+
+- 保留所有指令性内容
+- 用记忆替换部分叙事性内容
+- Token数量优化
+- 最近对话历史保留
+
+## 🛠️ 开发指南
+
+### 本地开发
+
+```bash
+# 1. 创建虚拟环境
+cd api-service
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# 或 venv\Scripts\activate  # Windows
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 配置环境变量
+cp .env.example .env
+# 编辑.env填入配置
+
+# 4. 启动Neo4j（使用Docker）
+cd ..
+docker-compose up -d neo4j
+
+# 5. 运行API服务
+cd api-service
+python main.py
+```
+
+### 运行测试
+
+```bash
+# 运行单元测试
+pytest tests/
+
+# 运行集成测试
+pytest tests/integration/
+
+# 生成测试覆盖率报告
+pytest --cov=. tests/
+```
+
+### 添加新功能
+
+1. 在`models/`中定义数据模型
+2. 在`services/`中实现业务逻辑
+3. 在`main.py`中添加API端点
+4. 添加测试用例
+
+## 🐛 故障排查
+
+### Neo4j连接失败
+
+```bash
+# 检查Neo4j容器状态
+docker-compose ps neo4j
+
+# 查看Neo4j日志
+docker-compose logs neo4j
+
+# 重启Neo4j
+docker-compose restart neo4j
+```
+
+### Graphiti初始化失败
+
+检查以下配置：
+- Neo4j URI是否正确（`bolt://localhost:7687`）
+- Neo4j用户名和密码是否正确
+- DeepSeek API密钥是否有效
+- 硅基流动API密钥是否有效
+
+### SillyTavern格式解析失败
+
+确保格式正确：
+```
+<标签名>
+内容
+</标签名>
+```
+
+### 记忆检索结果为空
+
+可能原因：
+- 知识图谱中没有相关记忆
+- 检索查询不够具体
+- Reranker过滤过于严格
+
+## 📊 性能优化
+
+### 1. Neo4j配置
+
+在`docker-compose.yaml`中调整：
+
+```yaml
+neo4j:
+  environment:
+    NEO4J_dbms_memory_heap_initial__size: 512m
+    NEO4J_dbms_memory_heap_max__size: 2G
+    NEO4J_dbms_memory_pagecache_size: 1G
+```
+
+### 2. 并发限制
+
+在`.env`中调整：
+
+```env
+API_SEMAPHORE_LIMIT=10  # 增加并发限制
+```
+
+### 3. 缓存策略
+
+- 使用Redis缓存频繁查询
+- 实现记忆预加载
+- 批量处理请求
+
+## 🔐 安全建议
+
+1. **保护API密钥**：
+   - 不要将`.env`文件提交到Git
+   - 使用密钥管理服务（如AWS Secrets Manager）
+
+2. **启用HTTPS**：
+   - 生产环境使用反向代理（Nginx）
+   - 配置SSL证书
+
+3. **API限流**：
+   - 实现速率限制
+   - 使用令牌桶算法
+
+4. **输入验证**：
+   - 清理用户输入
+   - 限制请求大小
+
+## 📚 参考文档
+
+- [Graphiti官方文档](https://github.com/getzep/graphiti)
+- [Neo4j官方文档](https://neo4j.com/docs/)
+- [DeepSeek API文档](https://platform.deepseek.com/api-docs/)
+- [硅基流动API文档](https://docs.siliconflow.cn/)
+- [SillyTavern文档](https://docs.sillytavern.app/)
+
+## 🤝 贡献指南
+
+欢迎贡献！请遵循以下步骤：
+
+1. Fork本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启Pull Request
+
+## 📄 许可证
+
+本项目采用MIT许可证。详见[LICENSE](LICENSE)文件。
+
+## 🙏 致谢
+
+感谢以下开源项目：
+
+- [Graphiti](https://github.com/getzep/graphiti) - 知识图谱框架
+- [Neo4j](https://neo4j.com/) - 图数据库
+- [FastAPI](https://fastapi.tiangolo.com/) - Web框架
+- [SillyTavern](https://github.com/SillyTavern/SillyTavern) - AI前端
+
+## 📞 联系方式
+
+- 项目主页: https://github.com/2211427551/Exp_Graphiti_MemR3_AIRP_Intergration
+- 问题反馈: https://github.com/2211427551/Exp_Graphiti_MemR3_AIRP_Intergration/issues
