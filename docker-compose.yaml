@@ -1,0 +1,152 @@
+version: '3.8'
+
+services:
+  # Neo4j图数据库服务
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: airp-neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"    # HTTP Browser界面
+      - "7687:7687"    # Bolt协议端口
+    environment:
+      # 认证配置
+      - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+      
+      # 内存配置（根据服务器内存调整）
+      - NEO4J_dbms_memory_pagecache_size=2G
+      - NEO4J_dbms_memory_heap_initial__size=4G
+      - NEO4J_dbms_memory_heap_max__size=4G
+      
+      # 插件配置
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      
+      # 日志配置
+      - NEO4J_dbms_logs_debug_level=INFO
+    volumes:
+      # 数据持久化
+      - ./neo4j/data:/data
+      - ./neo4j/logs:/logs
+      - ./neo4j/import:/var/lib/neo4j/import
+      - ./neo4j/plugins:/plugins
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "${NEO4J_USER}", "-p", "${NEO4J_PASSWORD}", "RETURN 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - airp-network
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 6G
+        reservations:
+          cpus: '2'
+          memory: 4G
+
+  # Redis缓存服务（可选，推荐用于生产环境）
+  redis:
+    image: redis:7-alpine
+    container_name: airp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - ./redis/data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - airp-network
+
+  # API服务
+  api-service:
+    build:
+      context: ./api-service
+      dockerfile: Dockerfile
+    container_name: airp-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Neo4j连接配置
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      
+      # Redis配置（可选）
+      - REDIS_URL=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      
+      # DeepSeek API配置（LLM推理）
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL}
+      
+      # 硅基流动API配置（Embedding和Reranker）
+      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
+      - SILICONFLOW_BASE_URL=${SILICONFLOW_BASE_URL}
+      - SILICONFLOW_EMBEDDING_MODEL=${SILICONFLOW_EMBEDDING_MODEL}
+      - SILICONFLOW_RERANKER_MODEL=${SILICONFLOW_RERANKER_MODEL}
+      
+      # Graphiti配置
+      - GRAPHITI_SEMAPHORE_LIMIT=${GRAPHITI_SEMAPHORE_LIMIT}
+      - GRAPHITI_TELEMETRY_ENABLED=${GRAPHITI_TELEMETRY_ENABLED}
+      
+      # API服务配置
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_WORKERS=${API_WORKERS}
+      - API_LOG_LEVEL=${API_LOG_LEVEL}
+      
+      # 应用配置
+      - APP_ENV=${APP_ENV}
+      - APP_SECRET_KEY=${APP_SECRET_KEY}
+    volumes:
+      # 代码热重载（开发环境）
+      - ./api-service:/app
+      # 日志持久化
+      - ./logs/api:/app/logs
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - airp-network
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+
+networks:
+  airp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
+  redis_data:
+    driver: local
