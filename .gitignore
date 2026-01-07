@@ -84,9 +84,8 @@ htmlcov/
 *.tmp
 *.bak
 *.backup
-AIRP记忆系统完整实施指南.md
-完成情况说明与后续计划.md
 项目实现情况检查报告.md
 .gitignore
 api-service/advanced/API_INTEGRATION_GUIDE.md
-.gitignore
+AIRP记忆系统完整实施指南.md
+tests/AIRP系统测试与实施完整报告.md

@@ -5,10 +5,13 @@
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional
+from typing import List, Dict
 from pydantic import BaseModel, Field
 
-from api_service.models.change_detection import PsychologicalState
+from .psychological_modeling import (
+    PsychologicalState,
+    CoherenceScore
+)
 
 
 class PsychologicalCoherenceEvaluator:
@@ -21,7 +24,7 @@ class PsychologicalCoherenceEvaluator:
         self,
         character_id: str,
         time_window: timedelta = timedelta(days=7)
-    ) -> Dict[str, float]:
+    ) -> CoherenceScore:
         """
         评估角色的心理连贯性
         
@@ -52,12 +55,13 @@ class PsychologicalCoherenceEvaluator:
         
         if len(states) < 2:
             # 数据不足，返回默认高分
-            return {
-                "trait_consistency": 1.0,
-                "emotional_rationality": 1.0,
-                "behavioral_consistency": 1.0,
-                "memory_rationality": 1.0
-            }
+            return CoherenceScore(
+                overall_score=1.0,
+                trait_consistency=1.0,
+                emotional_rationality=1.0,
+                behavioral_consistency=1.0,
+                memory_rationality=1.0
+            )
         
         # 步骤2: 计算各维度得分
         trait_score = self.evaluate_trait_consistency(states)
@@ -73,13 +77,13 @@ class PsychologicalCoherenceEvaluator:
             memory_score * 0.2
         )
         
-        return {
-            "trait_consistency": trait_score,
-            "emotional_rationality": emotional_score,
-            "behavioral_consistency": behavioral_score,
-            "memory_rationality": memory_score,
-            "overall_score": overall_score
-        }
+        return CoherenceScore(
+            overall_score=overall_score,
+            trait_consistency=trait_score,
+            emotional_rationality=emotional_score,
+            behavioral_consistency=behavioral_score,
+            memory_rationality=memory_score
+        )
     
     def evaluate_trait_consistency(
         self,
@@ -214,13 +218,13 @@ class PsychologicalCoherenceEvaluator:
                     
                     # 检查情绪与特质是否匹配
                     if state.dominant_emotion:
-                        if top_trait[0] in ["joy", "happiness"]:
+                        if top_trait in ["joy", "happiness"]:
                             # 积极情绪与积极特质匹配
                             consistency_score = 1.0
-                        elif top_trait[0] in ["optimistic", "enthusiastic"]:
+                        elif top_trait in ["optimistic", "enthusiastic"]:
                             # 热情与积极特质匹配
                             consistency_score = 0.9
-                        elif top_trait[0] in ["anxious", "aggressive", "stubborn"]:
+                        elif top_trait in ["anxious", "aggressive", "stubborn"]:
                             # 消极情绪与消极特质匹配
                             consistency_score = 0.9
                         else:
@@ -278,6 +282,59 @@ class PsychologicalCoherenceEvaluator:
         
         返回: List[PsychologicalState]
         """
-        # TODO: 实现从Graphiti查询心理状态
-        # 这里先返回空列表
-        return []
+        try:
+            # 使用Cypher查询心理状态
+            current_time = datetime.now(timezone.utc)
+            start_time = current_time - time_window
+            
+            query = """
+            MATCH (e:Episode)
+            WHERE e.source_description = $source_desc
+              AND e.group_id = $character_id
+              AND e.reference_time >= $start_time
+              AND e.reference_time <= $current_time
+              AND (e.valid_until IS NULL OR e.valid_until > $current_time)
+            RETURN e
+            ORDER BY e.reference_time DESC
+            LIMIT 100
+            """
+            
+            with self.graphiti_service.graphiti.driver.session() as session:
+                result = session.run(query, {
+                    "source_desc": f"psychological_state:{character_id}",
+                    "character_id": character_id,
+                    "start_time": start_time.isoformat(),
+                    "current_time": current_time.isoformat()
+                })
+                
+                states = []
+                for record in result:
+                    episode = record["e"]
+                    # 解析Episode内容为PsychologicalState
+                    # 这里简化，实际应该解析episode_body
+                    # 暂时返回空列表
+                    pass
+                
+                return states
+                
+        except Exception as e:
+            print(f"Error getting psychological states for character {character_id}: {e}")
+            return []
+    
+    def compute_text_similarity(self, text1: str, text2: str) -> float:
+        """
+        计算文本相似度（简化版）
+        
+        实际应使用更复杂的算法（如余弦相似度）
+        """
+        if not text1 or not text2:
+            return 0.0
+        
+        # 简单的Jaccard相似度
+        set1 = set(text1.lower().split())
+        set2 = set(text2.lower().split())
+        
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+        
+        return intersection / union if union > 0 else 0.0

@@ -5,7 +5,7 @@
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Literal
 from pydantic import BaseModel, Field
 
 

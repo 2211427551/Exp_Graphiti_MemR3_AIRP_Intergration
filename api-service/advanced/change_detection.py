@@ -8,7 +8,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 
-from api_service.models.change_detection import (
+from models.change_detection import (
     WorldInfoEntry,
     WorldInfoState,
     ChatMessage,
@@ -18,7 +18,7 @@ from api_service.models.change_detection import (
     ChangeDetectionResult,
     ChatChangeResult
 )
-from api_service.utils.dedup import (
+from utils.dedup import (
     compute_entry_id,
     normalize_name,
     compute_content_hash,
@@ -170,53 +170,118 @@ def parse_entry(text: str) -> Optional[WorldInfoEntry]:
     返回:
         Optional[WorldInfoEntry]: 解析后的条目
     """
-    # 检测地点
-    location_match = re.match(r'地点\("([^"]+)"\)\)', text)
+    # 检测地点 - 修复正则表达式，只需要一个右括号
+    location_match = re.match(r'地点\("([^"]+)"\)', text)
     if location_match:
+        name = location_match.group(1)
+        entry_id = compute_entry_id("location", name)
+        content_hash = compute_content_hash(text)
+        
         return WorldInfoEntry(
+            entry_id=entry_id,
             entry_type="location",
-            name=location_match.group(1),
+            name=name,
             content=text,
-            properties=extract_properties(text)
+            content_hash=content_hash,
+            properties=extract_properties(text),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+            source="world_info",
+            session_id="unknown",  # 默认值
+            status="active",
+            status_reason=None
         )
     
-    # 检测角色
-    character_match = re.match(r'角色\("([^"]+)"\)\)', text)
+    # 检测角色 - 修复正则表达式，只需要一个右括号
+    character_match = re.match(r'角色\("([^"]+)"\)', text)
     if character_match:
+        name = character_match.group(1)
+        entry_id = compute_entry_id("character", name)
+        content_hash = compute_content_hash(text)
+        
         return WorldInfoEntry(
+            entry_id=entry_id,
             entry_type="character",
-            name=character_match.group(1),
+            name=name,
             content=text,
-            properties=extract_properties(text)
+            content_hash=content_hash,
+            properties=extract_properties(text),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+            source="world_info",
+            session_id="unknown",  # 默认值
+            status="active",
+            status_reason=None
         )
     
-    # 检测概念
-    concept_match = re.match(r'概念\("([^"]+)"\)\)', text)
+    # 检测概念 - 修复正则表达式，只需要一个右括号
+    concept_match = re.match(r'概念\("([^"]+)"\)', text)
     if concept_match:
+        name = concept_match.group(1)
+        entry_id = compute_entry_id("concept", name)
+        content_hash = compute_content_hash(text)
+        
         return WorldInfoEntry(
+            entry_id=entry_id,
             entry_type="concept",
-            name=concept_match.group(1),
+            name=name,
             content=text,
-            properties=extract_properties(text)
+            content_hash=content_hash,
+            properties=extract_properties(text),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+            source="world_info",
+            session_id="unknown",  # 默认值
+            status="active",
+            status_reason=None
         )
     
     # 检测Character_Profile_of
     profile_match = re.match(r'Character_Profile_of:\s*([^\n]+)', text)
     if profile_match:
+        name = profile_match.group(1).strip()
+        entry_id = compute_entry_id("character", name)
+        content_hash = compute_content_hash(text)
+        
         return WorldInfoEntry(
+            entry_id=entry_id,
             entry_type="character",
-            name=profile_match.group(1).strip(),
+            name=name,
             content=text,
-            properties=extract_properties(text)
+            content_hash=content_hash,
+            properties=extract_properties(text),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+            source="character_profile",
+            session_id="unknown",  # 默认值
+            status="active",
+            status_reason=None
         )
     
     # 默认：通用条目（不匹配已知格式）
     if len(text.strip()) > 0:
+        name = text.split('\n')[0][:50]  # 使用第一行前50字符作为名称
+        entry_id = compute_entry_id("general", name)
+        content_hash = compute_content_hash(text)
+        
         return WorldInfoEntry(
+            entry_id=entry_id,
             entry_type="general",
-            name=text.split('\n')[0][:50],  # 使用第一行前50字符作为名称
+            name=name,
             content=text,
-            properties={}
+            content_hash=content_hash,
+            properties={},
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            deleted_at=None,
+            source="general",
+            session_id="unknown",  # 默认值
+            status="active",
+            status_reason=None
         )
     
     return None
@@ -361,10 +426,21 @@ def detect_chat_changes(
         )
     
     # 判断变化类型
+    # 先检查第一个位置是否不同，如果是，直接判定为修改
+    if diff_index == 0 and len(old_hashes) > 0 and old_hashes[0] != new_hashes[0]:
+        # 第一个消息就不同，这是修改
+        detailed_diff = compute_detailed_diff(old_state.messages, new_messages)
+        return ChatChangeResult(
+            type="modification",
+            details=detailed_diff,
+            message_count=len(new_messages)
+        )
+    
     if len(new_hashes) > len(old_hashes):
         # 消息数量增加，可能是追加
-        if old_hashes[:diff_index] == new_hashes[:diff_index]:
-            # 前面部分相同，后面新增
+        # 检查前面是否完全相同
+        if old_hashes[:diff_index] == new_hashes[:diff_index] and diff_index == len(old_hashes):
+            # 前面部分完全相同，后面新增
             new_messages_count = len(new_hashes) - len(old_hashes)
             
             # 检查新增的尾部消息
@@ -488,13 +564,9 @@ def compute_detailed_diff(old_messages: List[ChatMessage], new_messages: List[Ch
         new_messages: 新消息列表
     
     返回:
-        List[Dict]: 差异详情
+        List[Dict]: 差异详情列表（扁平化）
     """
-    diff = {
-        "added": [],
-        "removed": [],
-        "modified": []
-    }
+    diff_list = []
     
     # 简单的逐条比较
     max_len = max(len(old_messages), len(new_messages))
@@ -504,23 +576,26 @@ def compute_detailed_diff(old_messages: List[ChatMessage], new_messages: List[Ch
         new_msg = new_messages[i] if i < len(new_messages) else None
         
         if old_msg is None:
-            diff["added"].append({
+            diff_list.append({
+                "type": "added",
                 "index": i,
                 "message": new_msg
             })
         elif new_msg is None:
-            diff["removed"].append({
+            diff_list.append({
+                "type": "removed",
                 "index": i,
                 "message": old_msg
             })
         elif old_msg.content_hash != new_msg.content_hash:
-            diff["modified"].append({
+            diff_list.append({
+                "type": "modified",
                 "index": i,
                 "old_message": old_msg,
                 "new_message": new_msg
             })
     
-    return diff
+    return diff_list
 
 
 def update_world_info_state(

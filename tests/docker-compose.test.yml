@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  # Neo4j数据库（测试环境）
+  neo4j-test:
+    image: neo4j:5.15.0-community
+    container_name: airp-neo4j-test
+    environment:
+      NEO4J_AUTH: neo4j/test_password_123
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_pagecache_size: 512m
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 512m
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_dbms_security_procedures_allowlist: apoc.*
+    ports:
+      - "7688:7687"
+      - "7475:7474"
+    volumes:
+      - ./neo4j-test-data:/data
+      - ./neo4j-test-logs:/logs
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Redis（测试环境）
+  redis-test:
+    image: redis:7-alpine
+    container_name: airp-redis-test
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./redis-test-data:/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # 测试服务容器
+  test-runner:
+    build:
+      context: ..
+      dockerfile: tests/Dockerfile.test
+    container_name: airp-test-runner
+    environment:
+      # 测试环境变量
+      APP_ENV: test
+      PYTEST_COVERAGE: "true"
+      PYTEST_VERBOSE: "true"
+      
+      # Neo4j配置（测试）
+      NEO4J_URI: bolt://neo4j-test:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: test_password_123
+      
+      # Redis配置（测试）
+      REDIS_HOST: redis-test
+      REDIS_PORT: 6379
+      
+      # LLM配置（测试环境）
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-test_api_key}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/beta}
+      DEEPSEEK_MODEL: deepseek-chat
+      DEEPSEEK_SMALL_MODEL: deepseek-chat
+      
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-test_siliconflow_key}
+      SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
+      SILICONFLOW_EMBEDDING_MODEL: BAAI/bge-m3
+      SILICONFLOW_EMBEDDING_DIM: 1024
+      SILICONFLOW_RERANKER_MODEL: BAAI/bge-reranker-v2-m3
+      
+      # API配置
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      
+      # Graphiti配置
+      GRAPHITI_SEMAPHORE_LIMIT: 5
+      GRAPHITI_TELEMETRY_ENABLED: false
+      
+      # 日志配置
+      API_LOG_LEVEL: DEBUG
+    volumes:
+      - ./test-results:/app/test-results
+      - ./test-coverage:/app/coverage
+    depends_on:
+      neo4j-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    networks:
+      - test-network
+    command: >
+      sh -c "
+        echo '等待服务就绪...' &&
+        sleep 5 &&
+        echo '开始运行测试...' &&
+        pytest /app/tests/ -v --tb=short --cov=/app/api-service --cov-report=html:/app/coverage/html --cov-report=term --cov-report=json:/app/coverage/coverage.json -j auto &&
+        echo '测试完成' &&
+        exit $?
+      "
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  neo4j-test-data:
+  neo4j-test-logs:
+  redis-test-data:

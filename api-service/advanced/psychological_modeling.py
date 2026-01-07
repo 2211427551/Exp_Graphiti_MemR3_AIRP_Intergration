@@ -5,14 +5,14 @@
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
+from typing import List, Optional, Dict, Literal, Any
 from pydantic import BaseModel, Field
 
 
 class SourceRef(BaseModel):
     """来源引用"""
     source_type: str = Field(..., description="来源类型")
-    source_id: str = Field(..., description="来源ID")
+    source_id: Optional[str] = Field(None, description="来源ID")
     confidence: float = Field(default=0.8, ge=0.0, le=1.0, description="置信度")
 
 

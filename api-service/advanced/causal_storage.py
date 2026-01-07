@@ -7,7 +7,7 @@
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from api_service.models.change_detection import (
+from .causal_modeling import (
     EventEntity,
     CausalRelation
 )

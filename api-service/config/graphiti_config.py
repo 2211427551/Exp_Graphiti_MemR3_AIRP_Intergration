@@ -5,6 +5,7 @@ from graphiti_core import Graphiti
 from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
 from graphiti_core.llm_client.config import LLMConfig
 from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 from neo4j import GraphDatabase
 from typing import Optional
 import logging
@@ -29,6 +30,7 @@ class GraphitiClientFactory:
         siliconflow_embedding_model: str,
         siliconflow_embedding_dim: int,
         siliconflow_reranker_model: str,
+        enable_cross_encoder: bool = True,
         semaphore_limit: int = 5
     ) -> Graphiti:
         """
@@ -72,6 +74,9 @@ class GraphitiClientFactory:
             
             siliconflow_reranker_model: str
                 硅基流动重排序模型名称，如：BAAI/bge-reranker-v2-m3
+            
+            enable_cross_encoder: bool = True
+                是否启用Cross-Encoder（重排序器），提升检索质量
             
             semaphore_limit: int = 5
                 Graphiti并发限制，避免API限流
@@ -128,7 +133,22 @@ class GraphitiClientFactory:
             embedder = OpenAIEmbedder(config=embedder_config)
             logger.info("硅基流动Embedding客户端创建成功")
             
-            # 步骤4: 初始化Graphiti实例
+            # 步骤4: 创建Cross-Encoder（可选，提升检索质量）
+            cross_encoder = None
+            if enable_cross_encoder:
+                logger.info(f"创建Cross-Encoder客户端 - 模型: {siliconflow_reranker_model}")
+                reranker_config = LLMConfig(
+                    api_key=siliconflow_api_key,
+                    model=siliconflow_reranker_model,
+                    base_url=siliconflow_base_url
+                )
+                cross_encoder = OpenAIRerankerClient(
+                    client=llm_client,
+                    config=reranker_config
+                )
+                logger.info("Cross-Encoder客户端创建成功")
+            
+            # 步骤5: 初始化Graphiti实例
             logger.info("初始化Graphiti实例...")
             graphiti = Graphiti(
                 uri=neo4j_uri,
@@ -136,14 +156,21 @@ class GraphitiClientFactory:
                 password=neo4j_password,
                 llm_client=llm_client,
                 embedder=embedder,
+                cross_encoder=cross_encoder,
                 semaphore_limit=semaphore_limit
             )
             logger.info("Graphiti实例初始化成功")
             
-            # 步骤5: 构建索引和约束
+            # 步骤6: 构建索引和约束
             logger.info("构建Neo4j索引和约束...")
             await graphiti.build_indices_and_constraints()
             logger.info("索引和约束构建完成")
+            
+            # 步骤7: 验证Cross-Encoder（如果启用）
+            if enable_cross_encoder and cross_encoder is not None:
+                logger.info("Cross-Encoder已启用，将提升检索质量")
+            else:
+                logger.info("Cross-Encoder未启用，使用默认检索模式")
             
             return graphiti
             

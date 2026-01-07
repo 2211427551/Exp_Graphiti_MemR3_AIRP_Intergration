@@ -17,7 +17,7 @@ def normalize_name(name: str) -> str:
     1. 统一大小写
     2. 去除多余空格
     3. 标准化标点
-    4. 去除特殊字符
+    4. 保留中文字符、字母、数字
     
     参数:
         name: 条目/实体名称
@@ -25,6 +25,8 @@ def normalize_name(name: str) -> str:
     返回:
         str: 标准化后的名称
     """
+    import string
+    
     # 转换为小写
     normalized = name.lower()
     
@@ -32,14 +34,27 @@ def normalize_name(name: str) -> str:
     normalized = re.sub(r'\s+', ' ', normalized)
     normalized = normalized.strip()
     
-    # 标准化标点
+    # 标准化中文标点
     normalized = normalized.replace('：', ':')
     normalized = normalized.replace('（', '(').replace('）', ')')
+    normalized = normalized.replace('【', '[').replace('】', ']')
     
-    # 去除特殊字符（保留中文、字母、数字、空格、标点）
-    normalized = re.sub(r'[^\w\s\u4e00-\u9fa5:：，。、；；！！？？（）（）【】""\'']', '', normalized)
+    # 构建允许的字符集
+    # 保留：中文字符、英文字母、数字、基本标点
+    result = []
+    for char in normalized:
+        # 保留中文字符（Unicode范围）
+        if '\u4e00' <= char <= '\u9fff':
+            result.append(char)
+        # 保留英文字母和数字
+        elif char in string.ascii_letters + string.digits:
+            result.append(char)
+        # 保留基本标点
+        elif char in ' :(),.-_':
+            result.append(char)
+        # 其他字符跳过
     
-    return normalized
+    return ''.join(result)
 
 
 def normalize_content(content: str) -> str:
