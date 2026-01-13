@@ -26,7 +26,7 @@ from models.requests import ChatCompletionRequest
 from models.responses import ChatCompletionResponse, HealthResponse
 
 # 导入原有服务
-from api_service.models.change_detection import (
+from models.change_detection import (
     WorldInfoEntry,
     WorldInfoState,
     ChatMessage,
@@ -34,7 +34,7 @@ from api_service.models.change_detection import (
 )
 
 # 导入第一阶段：变化检测与同步
-from api_service.advanced.change_detection import (
+from advanced.change_detection import (
     detect_worldinfo_changes,
     detect_chat_changes,
     update_world_info_state,
@@ -42,27 +42,27 @@ from api_service.advanced.change_detection import (
     ChangeDetectionResult,
     ChatChangeResult
 )
-from api_service.advanced.change_sync import (
+from advanced.change_sync import (
     process_added_entries,
     process_removed_entries,
     process_modified_entries
 )
 
 # 导入第二阶段：心理连贯性建模
-from api_service.advanced.psychological_analyzer import PsychologicalAnalyzer
-from api_service.advanced.psychological_tracker import PsychologicalStateTracker
-from api_service.advanced.psychological_coherence import PsychologicalCoherenceEvaluator
-from api_service.models.change_detection import (
+from advanced.psychological_analyzer import PsychologicalAnalyzer
+from advanced.psychological_tracker import PsychologicalStateTracker
+from advanced.psychological_coherence import PsychologicalCoherenceEvaluator
+from advanced.psychological_modeling import (
     PsychologicalState,
     StateTransition,
     CoherenceScore
 )
 
 # 导入第三阶段：因果逻辑链建模
-from api_service.advanced.causal_analyzer import CausalAnalyzer
-from api_service.advanced.causal_reasoning import CausalReasoningEngine
-from api_service.advanced.causal_storage import store_causal_chain
-from api_service.models.change_detection import (
+from advanced.causal_analyzer import CausalAnalyzer
+from advanced.causal_reasoning import CausalReasoningEngine
+from advanced.causal_storage import store_causal_chain
+from advanced.causal_modeling import (
     EventEntity,
     CausalRelation,
     CausalChain,
@@ -70,7 +70,7 @@ from api_service.models.change_detection import (
 )
 
 # 导入辅助函数
-from api_service.advanced.causal_analyzer import CausalAnalyzer
+from advanced.causal_analyzer import CausalAnalyzer
 
 # 全局变量
 graphiti_service: GraphitiService = None
@@ -122,13 +122,16 @@ async def lifespan(app: FastAPI):
     
     # 步骤3: 初始化服务
     logger.info("初始化服务层...")
-    graphiti_service = GraphitiService(graphiti_client)
+    graphiti_service = GraphitiService(config)
     llm_service = LLMService(
         api_key=config.deepseek.api_key,
         base_url=config.deepseek.base_url,
         model=config.deepseek.model
     )
     parser_service = SillyTavernParser()
+    
+    # 初始化graphiti_service的高级功能模块
+    await graphiti_service.initialize(graphiti_client, llm_service)
     logger.info("所有服务初始化完成")
     
     # 步骤4-6: 初始化第一阶段服务（变化检测与同步）
@@ -190,16 +193,16 @@ app.add_middleware(
 
 # 健康检查端点（增强版，包含状态信息）
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check(request: Request):
     """
     健康检查端点
     
     返回:
         HealthResponse: 健康状态，包含各模块状态
     """
-    world_info_count = len(app.state.world_info_states)
-    chat_history_count = len(app.state.chat_history_states)
-    psych_state_count = sum(len(states) for states in app.state.psychological_state_history.values())
+    world_info_count = len(getattr(request.app.state, 'world_info_states', {}))
+    chat_history_count = len(getattr(request.app.state, 'chat_history_states', {}))
+    psych_state_records = sum(len(states) for states in getattr(request.app.state, 'psychological_state_history', {}).values())
     
     return HealthResponse(
         status="healthy",
@@ -207,7 +210,7 @@ async def health_check():
         version="1.0.0",
         world_info_states=world_info_count,
         chat_history_states=chat_history_count,
-        psych_state_records=psych_state_count
+        psych_state_records=psych_state_records
     )
 
 

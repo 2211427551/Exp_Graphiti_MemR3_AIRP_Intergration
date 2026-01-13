@@ -332,8 +332,8 @@ class PsychologicalStateTracker:
         RETURN r
         """
         
-        with self.graphiti_service.graphiti.driver.session() as session:
-            session.run(query, {
+        async with self.graphiti_service.graphiti.driver.session() as session:
+            await session.run(query, {
                 "character_id": character_id,
                 "state_id": state_id,
                 "transition_time": transition_time.isoformat(),

@@ -40,6 +40,22 @@ class ParsedContent:
     narratives: List[NarrativeBlock]         # 叙事性内容列表
     chat_history: List[DialogTurn]           # 对话历史
     raw_metadata: Dict[str, Any]              # 原始元数据
+    
+    # 便捷属性（从narratives提取）
+    @property
+    def world_info(self) -> List[NarrativeBlock]:
+        """获取世界书信息"""
+        return [n for n in self.narratives if n.block_type == 'world_info']
+    
+    @property
+    def world_info_content(self) -> str:
+        """获取世界书内容文本"""
+        return '\n'.join([n.content for n in self.world_info])
+    
+    @property
+    def chat_history_content(self) -> str:
+        """获取对话历史文本"""
+        return '\n'.join([f"{d.role}: {d.content}" for d in self.chat_history])
 
 
 class SillyTavernParser:

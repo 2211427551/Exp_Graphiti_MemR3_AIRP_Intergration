@@ -115,6 +115,22 @@ class HealthResponse(BaseModel):
         default="1.0.0",
         description="API版本"
     )
+    
+    # 统计信息
+    world_info_states: int = Field(
+        default=0,
+        description="World Info状态数量"
+    )
+    
+    chat_history_states: int = Field(
+        default=0,
+        description="Chat History状态数量"
+    )
+    
+    psych_state_records: int = Field(
+        default=0,
+        description="心理状态记录数量"
+    )
 
 
 class MemorySearchResult(BaseModel):

@@ -388,7 +388,7 @@ def sample_psychological_state():
     """
     提供示例的PsychologicalState
     """
-    from models.change_detection import PsychologicalState, EmotionalMix, TraitManifestation
+    from advanced.psychological_modeling import PsychologicalState, EmotionalMix, TraitManifestation
     from datetime import datetime, timezone
     
     return PsychologicalState(
@@ -431,7 +431,7 @@ def sample_event_entity():
     """
     提供示例的EventEntity
     """
-    from models.change_detection import EventEntity
+    from advanced.causal_modeling import EventEntity
     from datetime import datetime, timezone
     
     return EventEntity(
@@ -463,7 +463,7 @@ def sample_causal_relation():
     """
     提供示例的CausalRelation
     """
-    from models.change_detection import CausalRelation
+    from advanced.causal_modeling import CausalRelation
     
     return CausalRelation(
         cause_event_id="event1",
@@ -491,9 +491,10 @@ def test_app():
 
 
 @pytest.fixture
-def test_client(test_app):
+def test_client(test_app, initialized_test_app):
     """
     提供测试用的FastAPI TestClient
+    使用已初始化的应用
     """
     from fastapi.testclient import TestClient
     return TestClient(test_app)

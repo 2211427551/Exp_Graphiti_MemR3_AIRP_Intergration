@@ -299,8 +299,8 @@ class PsychologicalCoherenceEvaluator:
             LIMIT 100
             """
             
-            with self.graphiti_service.graphiti.driver.session() as session:
-                result = session.run(query, {
+            async with self.graphiti_service.graphiti.driver.session() as session:
+                result = await session.run(query, {
                     "source_desc": f"psychological_state:{character_id}",
                     "character_id": character_id,
                     "start_time": start_time.isoformat(),
@@ -308,7 +308,7 @@ class PsychologicalCoherenceEvaluator:
                 })
                 
                 states = []
-                for record in result:
+                async for record in result:
                     episode = record["e"]
                     # 解析Episode内容为PsychologicalState
                     # 这里简化，实际应该解析episode_body

@@ -7,12 +7,12 @@
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from api_service.models.change_detection import (
+from models.change_detection import (
     WorldInfoEntry,
     WorldInfoState,
     ChangeDetectionResult
 )
-from api_service.utils.dedup import compute_content_hash
+from utils.dedup import compute_content_hash
 
 
 async def process_added_entries(
